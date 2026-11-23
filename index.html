@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Simulador educativo de Aprendizagem por Reforço: veja um gatinho em pixel art aprender a desviar de obstáculos com Q-Learning." />
+  <meta name="theme-color" content="#140C24" />
+  <title>Pixel Cat — Aprendendo com Q-Learning</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%237952A0'/%3E%3Ctext x='8' y='11.5' font-size='8' font-weight='900' text-anchor='middle' fill='white' font-family='sans-serif'%3ERL%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Cabeçalho Principal -->
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand" id="brand-home" role="button" tabindex="0" title="Voltar à seleção de personagem" aria-label="Pixel Cat — voltar à seleção de personagem">
+        <div class="brand-badge" aria-hidden="true">PC</div>
+        <div>
+          <h1 class="brand-title">Pixel Cat</h1>
+          <p class="brand-subtitle">Aprendendo com Q-Learning</p>
+        </div>
+      </div>
+
+      <nav class="topnav" aria-label="Navegação principal">
+        <a href="#sec-jogo" class="nav-link">Simulador</a>
+        <a href="#sec-qtable" class="nav-link">Tabela Q</a>
+        <a href="#sec-graficos" class="nav-link">Gráficos</a>
+        <a href="#sec-educativo" class="nav-link">Como Funciona</a>
+      </nav>
+
+      <div class="topbar-actions">
+        <div class="active-char-pill" id="active-char-pill">
+          <canvas id="header-char-preview" width="32" height="32" aria-hidden="true"></canvas>
+          <span id="header-char-name">Gato Frajola</span>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" id="btn-open-select">
+          Trocar Gato
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- TELA INICIAL: SELEÇÃO DE PERSONAGEM -->
+  <section id="start-screen" class="start-screen">
+    <div class="container">
+      <div class="hero-card">
+        <div class="hero-pill">Simulador Interativo de Inteligência Artificial</div>
+        <h2 class="hero-title">Ensine um gatinho a desviar de obstáculos usando <span>Q-Learning</span></h2>
+        <p class="hero-desc">
+          Observe na prática como um agente aprende por tentativa e erro, sem nenhuma regra pré-programada de quando pular.
+          Escolha seu personagem abaixo — a aparência muda, mas o cérebro matemático da IA é o mesmo!
+        </p>
+
+        <ul class="hero-features" aria-label="Resumo do experimento">
+          <li><strong>6</strong> estados</li>
+          <li><strong>2</strong> ações</li>
+          <li>Política <strong>ε-greedy</strong></li>
+          <li>Tabela Q <strong>ao vivo</strong></li>
+        </ul>
+
+        <p class="section-kicker">Escolha seu personagem</p>
+
+        <div class="character-grid" id="character-grid" role="radiogroup" aria-label="Escolha seu personagem">
+          <!-- Cartões gerados dinamicamente pelo script.js -->
+        </div>
+
+        <div class="hero-cta-row">
+          <button type="button" class="btn btn-primary btn-lg" id="btn-enter-lab">
+            <span class="btn-ico" aria-hidden="true">▶</span> Iniciar no Laboratório
+          </button>
+          <p class="hero-note" id="saved-progress-note" hidden>
+            Progresso anterior detectado no navegador (<strong id="saved-episodes-count">0</strong> episódios salvos).
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- APLICAÇÃO PRINCIPAL -->
+  <main id="app-main" class="app-main hidden">
+    <div class="container">
+
+      <!-- SEÇÃO 1 E 2: JOGO + PAINEL DE INTELIGÊNCIA ARTIFICIAL -->
+      <section id="sec-jogo" class="section-block">
+        <div class="workspace-grid">
+          <!-- Coluna Esquerda: Arena do Jogo e Controles -->
+          <div class="card game-card">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Arena de Corrida Infinita</h2>
+                <p class="card-subtitle" id="mode-description">
+                  Modo Treinamento Automático: o agente escolhe as ações e atualiza a Tabela Q em tempo real.
+                </p>
+              </div>
+              <div class="status-badges">
+                <span class="badge badge-mode" id="badge-mode">MODO IA</span>
+                <span class="badge badge-state" id="badge-run-state" aria-live="polite">PRONTO</span>
+              </div>
+            </div>
+
+            <!-- Barra de Progresso de Treinamento em Lote -->
+            <div class="batch-progress-wrap hidden" id="batch-progress-wrap">
+              <div class="batch-progress-info">
+                <span id="batch-progress-label">Treinando agente em alta velocidade...</span>
+                <strong id="batch-progress-count">0 / 60 episódios</strong>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill" id="batch-progress-fill" style="width: 0%"></div>
+              </div>
+            </div>
+
+            <!-- Canvas do Jogo -->
+            <div class="canvas-stage">
+              <canvas id="game-canvas" width="800" height="280" aria-label="Arena do jogo: o personagem corre e precisa pular os obstáculos"></canvas>
+
+              <!-- Overlay de Pausa / Início / Fim Manual -->
+              <div class="canvas-overlay hidden" id="canvas-overlay">
+                <div class="overlay-box" role="dialog" aria-labelledby="overlay-title">
+                  <div class="overlay-icon" id="overlay-icon" aria-hidden="true">❚❚</div>
+                  <h3 id="overlay-title">Jogo Pausado</h3>
+                  <p id="overlay-text">Clique em Continuar para retomar a corrida.</p>
+                  <button type="button" class="btn btn-primary" id="btn-overlay-action">Continuar</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Controles de Treino e Jogo -->
+            <div class="controls-toolbar">
+              <div class="control-group">
+                <button type="button" class="btn btn-primary" id="btn-start-pause">Iniciar</button>
+                <button type="button" class="btn btn-secondary" id="btn-restart-run">Reiniciar Tentativa</button>
+                <button type="button" class="btn btn-outline" id="btn-toggle-mode">Alternar p/ Modo Manual</button>
+              </div>
+
+              <div class="control-group">
+                <button type="button" class="btn btn-accent" id="btn-train-batch" title="Executa 60 episódios automaticamente para treinar o agente rapidamente">
+                  TREINAR AGENTE (+60 Ep.)
+                </button>
+                <button type="button" class="btn btn-observe" id="btn-observe-agent" title="Executa o jogo em velocidade 1x para observar as decisões do agente">
+                  Observar Agente (1x)
+                </button>
+              </div>
+            </div>
+
+            <!-- Barra Secundária de Opções -->
+            <div class="controls-subbar">
+              <div class="speed-selector" id="speed-selector">
+                <span class="subbar-label">Velocidade IA:</span>
+                <button type="button" class="chip active" data-speed="1" aria-pressed="true">1x</button>
+                <button type="button" class="chip" data-speed="5" aria-pressed="false">5x</button>
+                <button type="button" class="chip" data-speed="20" aria-pressed="false">20x</button>
+              </div>
+
+              <label class="toggle-check">
+                <input type="checkbox" id="chk-show-sensors" checked />
+                <span>Mostrar sensores de distância</span>
+              </label>
+
+              <label class="toggle-check" title="Desativa temporariamente a aleatoriedade (ε=0) para testar apenas o melhor conhecimento aprendido">
+                <input type="checkbox" id="chk-greedy-only" />
+                <span>Somente Aproveitamento (ε=0)</span>
+              </label>
+
+              <button type="button" class="btn btn-danger-soft btn-sm" id="btn-reset-training">
+                Resetar Treinamento
+              </button>
+            </div>
+
+            <!-- Botão de Pulo para Modo Manual (útil em celular/mouse) -->
+            <div class="manual-controls-bar hidden" id="manual-controls-bar">
+              <span>Controles Manuais: pressione <kbd>Espaço</kbd>, <kbd>↑</kbd> ou toque no cenário / botão ao lado.</span>
+              <button type="button" class="btn btn-primary" id="btn-manual-jump"><span class="btn-ico" aria-hidden="true">▲</span> PULAR</button>
+            </div>
+
+            <p class="shortcut-hint">Atalhos: <kbd>P</kbd> pausa/continua · <kbd>R</kbd> reinicia a tentativa · <kbd>M</kbd> alterna o modo</p>
+          </div>
+
+          <!-- Coluna Direita: Painel de Monitoramento da IA -->
+          <aside class="card ai-panel" aria-label="Painel de Inteligência Artificial">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">Painel da IA</h2>
+                <p class="card-subtitle">Leitura instantânea do agente</p>
+              </div>
+              <span class="strategy-pill" id="ai-strategy-pill">Aguardando</span>
+            </div>
+
+            <div class="metrics-grid">
+              <div class="metric-box metric-wide">
+                <span class="metric-label">Estado Atual (s)</span>
+                <strong class="metric-value mono" id="ai-state">LONGE | NO CHÃO</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Distância do Obstáculo</span>
+                <strong class="metric-value mono" id="ai-distance">-- px</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Ação Escolhida (a)</span>
+                <strong class="metric-value" id="ai-action">--</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Última Recompensa (r)</span>
+                <strong class="metric-value mono" id="ai-reward">0.0</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Recompensa do Episódio</span>
+                <strong class="metric-value mono" id="ai-ep-reward">0.0</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Episódios de Treino</span>
+                <strong class="metric-value mono" id="ai-episodes">0</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Pontuação / Recorde</span>
+                <strong class="metric-value mono" id="ai-score">0 / 0</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Obstáculos (Ep. / Total)</span>
+                <strong class="metric-value mono" id="ai-obstacles">0 / 0</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Exploração (ε - Epsilon)</span>
+                <strong class="metric-value mono" id="ai-epsilon">1.000</strong>
+                <div class="epsilon-bar" aria-hidden="true"><span id="ai-epsilon-bar"></span></div>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Aprendizado (α - Alpha)</span>
+                <strong class="metric-value mono" id="ai-alpha">0.10</strong>
+              </div>
+
+              <div class="metric-box">
+                <span class="metric-label">Desconto (γ - Gamma)</span>
+                <strong class="metric-value mono" id="ai-gamma">0.90</strong>
+              </div>
+            </div>
+
+            <div class="reward-legend">
+              <h4>Sistema de Recompensas</h4>
+              <ul>
+                <li><span class="dot pos"></span> <strong>+10</strong> ultrapassar obstáculo</li>
+                <li><span class="dot pos"></span> <strong>+1</strong> sobreviver ao intervalo</li>
+                <li><span class="dot neg"></span> <strong>-3</strong> salto desnecessário</li>
+                <li><span class="dot crit"></span> <strong>-100</strong> colidir com obstáculo</li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- SEÇÃO 3: TABELA Q-LEARNING -->
+      <section id="sec-qtable" class="section-block">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Tabela Q-Learning (Memória do Agente)</h2>
+              <p class="card-subtitle">
+                Valores reais armazenados na memória do algoritmo e atualizados durante cada transição de estado.
+              </p>
+            </div>
+            <div class="formula-box mono" title="Equação de Bellman aplicada no Q-Learning">
+              Q(s,a) ← Q(s,a) + α [ r + γ · max Q(s',a') - Q(s,a) ]
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="q-table" id="q-table">
+              <thead>
+                <tr>
+                  <th>ESTADO</th>
+                  <th>Q(CORRER)</th>
+                  <th>Q(PULAR)</th>
+                  <th>MELHOR AÇÃO</th>
+                  <th title="Quantas vezes a equação de Bellman atualizou este estado">ATUALIZAÇÕES</th>
+                </tr>
+              </thead>
+              <tbody id="q-table-body">
+                <!-- Preenchido dinamicamente pelo script.js -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="didactic-callout">
+            <div class="callout-icon" aria-hidden="true">i</div>
+            <div>
+              <strong>O que significam esses números?</strong>
+              <p>
+                Cada valor <strong>Q(s, a)</strong> representa a <em>expectativa de recompensa futura acumulada</em> ao escolher a ação
+                <strong>a</strong> (Correr ou Pular) quando o agente se encontra no estado <strong>s</strong>.
+                Valores <span class="q-pos-inline">positivos</span> indicam ações que costumam levar à sobrevivência e ultrapassagem de obstáculos (+10),
+                enquanto valores <span class="q-neg-inline">negativos</span> indicam ações que levaram a colisões (-100) ou saltos inúteis (-3).
+                No estado <strong>PERTO | NO CHÃO</strong>, o agente aprende gradualmente que <strong>PULAR</strong> gera uma recompensa esperada muito maior do que <strong>CORRER</strong>!
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SEÇÃO 4: VISUALIZAÇÃO DO APRENDIZADO (GRÁFICOS) -->
+      <section id="sec-graficos" class="section-block">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Evolução do Aprendizado</h2>
+              <p class="card-subtitle">
+                Métricas calculadas exclusivamente a partir dos episódios reais executados pelo agente.
+              </p>
+            </div>
+            <div class="chart-summary-pills">
+              <span class="summary-pill">Média últimos 10 ep.: <strong id="stat-avg-reward">0.0</strong></span>
+              <span class="summary-pill">Taxa de Sucesso: <strong id="stat-success-rate">0%</strong></span>
+            </div>
+          </div>
+
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Recompensa por Episódio</h3>
+                <span class="chart-legend">
+                  <i class="leg-line leg-lilac"></i> Episódio
+                  <i class="leg-line leg-purple"></i> Média Móvel (10)
+                </span>
+              </div>
+              <canvas id="chart-rewards" width="420" height="210" aria-label="Gráfico de recompensa por episódio"></canvas>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Taxa de Sucesso nos Obstáculos</h3>
+                <span class="chart-legend">
+                  <i class="leg-line leg-pink"></i> % desvios sem colisão (janela 10)
+                </span>
+              </div>
+              <canvas id="chart-success" width="420" height="210" aria-label="Gráfico da taxa de sucesso"></canvas>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Evolução Q(PERTO | NO CHÃO)</h3>
+                <span class="chart-legend">
+                  <i class="leg-line leg-green"></i> Q(PULAR)
+                  <i class="leg-line leg-red"></i> Q(CORRER)
+                </span>
+              </div>
+              <canvas id="chart-qvalues" width="420" height="210" aria-label="Gráfico da evolução dos valores Q no estado PERTO e NO CHÃO"></canvas>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3>Redução da Exploração (ε)</h3>
+                <span class="chart-legend">
+                  <i class="leg-line leg-dark"></i> Epsilon (1.00 → 0.05)
+                </span>
+              </div>
+              <canvas id="chart-epsilon" width="420" height="210" aria-label="Gráfico da redução da exploração epsilon"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SEÇÃO 5: SEÇÃO EDUCATIVA -->
+      <section id="sec-educativo" class="section-block">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Guia Didático: Entendendo a Aprendizagem por Reforço</h2>
+              <p class="card-subtitle">
+                Os conceitos fundamentais por trás do experimento que você acabou de observar.
+              </p>
+            </div>
+          </div>
+
+          <!-- Diagrama de Ciclo RL -->
+          <div class="rl-cycle" aria-label="Ciclo da Aprendizagem por Reforço">
+            <div class="cycle-step">
+              <span class="step-num">1</span>
+              <strong>Agente</strong>
+              <small>Observa o estado (s)</small>
+            </div>
+            <div class="cycle-arrow" aria-hidden="true">→</div>
+            <div class="cycle-step">
+              <span class="step-num">2</span>
+              <strong>Ação (a)</strong>
+              <small>Correr ou Pular</small>
+            </div>
+            <div class="cycle-arrow" aria-hidden="true">→</div>
+            <div class="cycle-step">
+              <span class="step-num">3</span>
+              <strong>Ambiente</strong>
+              <small>Avança física e colisão</small>
+            </div>
+            <div class="cycle-arrow" aria-hidden="true">→</div>
+            <div class="cycle-step">
+              <span class="step-num">4</span>
+              <strong>Recompensa (r)</strong>
+              <small>+10, +1, -3 ou -100</small>
+            </div>
+            <div class="cycle-arrow" aria-hidden="true">→</div>
+            <div class="cycle-step">
+              <span class="step-num">5</span>
+              <strong>Atualiza Q(s,a)</strong>
+              <small>Aprende p/ o futuro</small>
+            </div>
+          </div>
+
+          <div class="edu-grid">
+            <article class="edu-card">
+              <h3>O que é Aprendizagem por Reforço?</h3>
+              <p>
+                É uma área do Aprendizado de Máquina em que um sistema não recebe um manual pronto com as respostas certas.
+                Em vez disso, ele interage com um ambiente, comete erros, recebe recompensas ou penalidades e descobre por conta própria qual sequência de decisões maximiza seus ganhos ao longo do tempo.
+              </p>
+            </article>
+
+            <article class="edu-card">
+              <h3>Agente e Ambiente</h3>
+              <p>
+                O <strong>Agente</strong> é o tomador de decisões (o cérebro que controla o gatinho).
+                O <strong>Ambiente</strong> é tudo aquilo com que o agente interage: a pista, a gravidade, a velocidade e os obstáculos que surgem no caminho.
+              </p>
+            </article>
+
+            <article class="edu-card">
+              <h3>Estado (State)</h3>
+              <p>
+                É a fotografia simplificada do mundo no instante da decisão. Neste simulador, combinamos a distância até o próximo obstáculo
+                (<strong>LONGE</strong>, <strong>MÉDIA</strong> ou <strong>PERTO</strong>) com a posição vertical do personagem
+                (<strong>NO CHÃO</strong> ou <strong>NO AR</strong>), formando 6 estados possíveis.
+              </p>
+            </article>
+
+            <article class="edu-card">
+              <h3>Ação e Política ε-Greedy</h3>
+              <p>
+                Em cada estado, o agente escolhe entre <strong>CORRER</strong> ou <strong>PULAR</strong>.
+                Com a estratégia <em>Epsilon-Greedy</em>, no início (<code>ε = 1.0</code>) ele explora ações aleatórias para descobrir o que funciona.
+                À medida que <code>ε</code> cai até <code>0.05</code>, ele passa a aproveitar o conhecimento acumulado na Tabela Q.
+              </p>
+            </article>
+
+            <article class="edu-card">
+              <h3>Recompensa (Reward)</h3>
+              <p>
+                É o sinal numérico que guia o aprendizado. Ultrapassar um obstáculo rende <strong>+10</strong>, sobreviver rende <strong>+1</strong>,
+                pular à toa custa <strong>-3</strong> e bater custa <strong>-100</strong>. O agente busca maximizar a soma das recompensas futuras, não apenas a imediata.
+              </p>
+            </article>
+
+            <article class="edu-card">
+              <h3>O Algoritmo Q-Learning</h3>
+              <p>
+                O Q-Learning atualiza cada célula da Tabela Q combinando a recompensa imediata <code>r</code> com o melhor valor futuro esperado no próximo estado
+                (<code>γ · max Q(s', a')</code>). A taxa de aprendizado <code>α = 0.1</code> controla o quanto a nova experiência ajusta a estimativa anterior,
+                e <code>γ = 0.9</code> define o quanto o agente valoriza recompensas futuras.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span><strong>Pixel Cat</strong> — Plataforma Educativa de Q-Learning em HTML5, CSS3 e JavaScript Puro</span>
+      <span>Desenvolvido por Gabrieli Diniz</span>
+    </div>
+  </footer>
+
+  <!-- Notificações rápidas -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
